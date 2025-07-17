@@ -1,4 +1,5 @@
 name: WINDOWS 2022 RDP
+
 on:
   workflow_dispatch:
     inputs:
@@ -7,33 +8,70 @@ on:
         description: "Enter Your NGROK TOKEN"
         required: true
         default: ""
+
 jobs:
   build:
     runs-on: windows-2022
     timeout-minutes: 9999
+
     steps:
-      - name: Download Ngrok.
+      - name: Download Ngrok and Scripts
         run: |
           Invoke-WebRequest https://raw.githubusercontent.com/Riders004/rdp/master/ngrok.exe -OutFile ngrok.exe
           Invoke-WebRequest https://raw.githubusercontent.com/Riders004/rdp/master/start.bat -OutFile start.bat
           Invoke-WebRequest https://raw.githubusercontent.com/Riders004/rdp/master/download1.jpeg -OutFile wallpaper.bat
           Invoke-WebRequest https://raw.githubusercontent.com/Riders004/rdp/master/loop.bat -OutFile loop.bat
-      - name: Connect Ngrok.
+
+      - name: Connect Ngrok
         run: |
-          ./ngrok.exe authtoken $Env:NGROK_AUTH
-          echo ${{ github.event.inputs.increment }}
-          echo $Env:NGROK_AUTH
+          ./ngrok.exe authtoken "${{ github.event.inputs.increment }}"
         env:
           NGROK_AUTH: ${{ github.event.inputs.increment }}
-      - name: Windows10 RDP.
+
+      - name: Enable RDP and Firewall
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
           copy wallpaper.bat D:\a\wallpaper.bat
-      - name: Tunnel.
+
+      - name: Start Tunnel
         run: Start-Process Powershell -ArgumentList '-Noexit -Command "ngrok.exe tcp --region ap 3389"'
-      - name: Connect Rdp.
+
+      - name: Connect RDP
         run: cmd /c start.bat
-      - name: win10 RDP.
+
+      - name: Get Public IP and Send to Discord
+        run: |
+          $ip = (Invoke-RestMethod -Uri "http://127.0.0.1:4040/api/tunnels").tunnels[0].public_url
+          $msg = @{
+            "username" = "RDP Bot"
+            "content" = "**✅ RDP Oluşturuldu!**"
+            "embeds" = @(
+              @{
+                "title" = "🔗 RDP Bilgileri"
+                "color" = 65280
+                "fields" = @(
+                  @{
+                    "name" = "🌐 IP"
+                    "value" = "$ip"
+                  },
+                  @{
+                    "name" = "👤 Kullanıcı Adı"
+                    "value" = "administrator"
+                  },
+                  @{
+                    "name" = "🔑 Şifre"
+                    "value" = "OLDUSER@#"
+                  }
+                )
+                "footer" = @{
+                  "text" = "RDP sistemi hazır. TsurenStudios"
+                }
+              }
+            )
+          }
+          Invoke-RestMethod -Uri "https://discord.com/api/webhooks/1377228694095134791/kuQUVRu4OHkld4WsYDH0ao4FbDmqFL_pc8oQr-cHd7-pMBRBwpGESzKuT-dijLVcs2yL" -Method POST -ContentType 'application/json' -Body (ConvertTo-Json $msg -Depth 4)
+
+      - name: Loop to Keep RDP Alive
         run: cmd /c loop.bat
